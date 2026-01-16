@@ -50,16 +50,13 @@ const StudyModal = ({ url, onClose, onOpenExternal }) => {
                 <div className="flex items-center justify-between p-4 bg-slate-900 border-b border-slate-700">
                     <div className="flex items-center gap-4 flex-1 min-w-0">
                         <h3 className="text-white font-bold truncate text-sm md:text-base mr-2">{url}</h3>
-                        <span className="hidden md:inline-block text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/50 whitespace-nowrap">
-                            ⚠️ Blank screen? Click "Open External" →
-                        </span>
                     </div>
                     <div className="flex gap-2 shrink-0">
                         <button
                             onClick={() => onOpenExternal(url)}
                             className="px-3 py-1.5 text-xs md:text-sm font-bold bg-green-600 text-white rounded hover:bg-green-500 transition-colors shadow-[0_0_10px_rgba(22,163,74,0.4)] border border-green-400"
                         >
-                            Open External (Safe)
+                            Open External (Fallback)
                         </button>
                         <button
                             onClick={onClose}
@@ -76,7 +73,7 @@ const StudyModal = ({ url, onClose, onOpenExternal }) => {
                         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 text-slate-900 font-mono">
                             <div className="flex flex-col items-center gap-2">
                                 <div className="w-6 h-6 border-b-2 border-black rounded-full animate-spin"></div>
-                                <p>Loading Resource...</p>
+                                <p>Loading Resource via Secure Link...</p>
                             </div>
                         </div>
                     )}
@@ -88,32 +85,14 @@ const StudyModal = ({ url, onClose, onOpenExternal }) => {
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation"
                     />
-                    {/* Detailed Overlay info for users */}
-                    {!loading && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-yellow-50 border-t border-yellow-200 p-3 shadow-lg">
-                            <div className="max-w-4xl mx-auto flex items-start gap-3">
-                                <div className="text-2xl">🛡️</div>
-                                <div className="flex-1">
-                                    <h4 className="text-sm font-bold text-slate-800 mb-1">
-                                        Why is this page empty or grey?
-                                    </h4>
-                                    <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                                        Many modern websites (like Google, YouTube, ChatGPT) block themselves from being embedded inside other apps due to strict <strong>Browser Privacy Policies (X-Frame-Options)</strong>. This is a security feature of the website itself, not a bug in our quest.
-                                    </p>
-                                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between bg-white p-2 rounded border border-yellow-200">
-                                        <div className="text-xs font-medium text-slate-700">
-                                            👉 <strong>Action Required:</strong> Please click the <span className="text-green-600 font-bold">Green "Open External (Safe)" Button</span> at the top right.
-                                        </div>
-                                        <div className="text-xs text-red-500 font-bold animate-pulse">
-                                            ⚠️ WARNING: Do not navigate to other unauthorized sites once the new tab opens!
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+
                 </div>
             </motion.div>
+
+            {/* Minimalist Fallback Hint below the modal */}
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-white/40 text-[10px] font-mono tracking-widest uppercase">
+                If too slow, use External (Safe) ↑
+            </div>
         </div>
     )
 }

@@ -127,6 +127,13 @@ export class FocusStateMachine {
   startHPDrain() {
     if (this.hpDrainInterval) return;
 
+    // Apply immediate damage once upon entering penalty
+    this.hpDrainListeners.forEach(callback => {
+      if (typeof callback === 'function') {
+        callback(10);
+      }
+    });
+
     this.hpDrainInterval = setInterval(() => {
       // Emit HP drain event to all HP drain listeners
       this.hpDrainListeners.forEach(callback => {
@@ -145,6 +152,15 @@ export class FocusStateMachine {
       clearInterval(this.hpDrainInterval);
       this.hpDrainInterval = null;
     }
+  }
+
+  /**
+   * Force an immediate penalty (used for extension violations)
+   */
+  forcePenalty() {
+    this.clearWarningTimer();
+    this.transition(FOCUS_STATES.PENALIZING);
+    this.startHPDrain();
   }
 
   /**

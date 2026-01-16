@@ -16,6 +16,45 @@ const FocusQuest = ({ setIsQuestActive }) => {
   const [currentCycle, setCurrentCycle] = useState(0)
   const [totalCycles, setTotalCycles] = useState(0)
   const [activeQuestConfig, setActiveQuestConfig] = useState(null)
+  const [isCompleting, setIsCompleting] = useState(false)
+
+  // Extension Integration
+  const [extensionConnected, setExtensionConnected] = useState(false)
+
+  useEffect(() => {
+    const checkExt = () => {
+      // Check for the data attribute on the <html> element
+      if (document.documentElement.getAttribute('data-focus-quest-extension') === 'installed') {
+        setExtensionConnected(true)
+        return true
+      }
+      return false
+    }
+
+    // Handle message from extension
+    const handleMessage = (event) => {
+      if (event.data.type === 'FOCUS_QUEST_EXTENSION_READY' && event.data.source === 'FOCUS_QUEST_EXTENSION') {
+        setExtensionConnected(true)
+      }
+    }
+    window.addEventListener('message', handleMessage)
+
+    // Initial check
+    if (!checkExt()) {
+      // "Ping" the extension in case it's already there but we missed the ready message
+      window.postMessage({ type: 'PING_EXTENSION', source: 'FOCUS_QUEST_APP' }, '*')
+    }
+
+    // Fallback polling
+    const interval = setInterval(() => {
+      if (checkExt()) clearInterval(interval)
+    }, 1000)
+
+    return () => {
+      window.removeEventListener('message', handleMessage)
+      clearInterval(interval)
+    }
+  }, [])
 
   // Custom Timer State
   const [timerMode, setTimerMode] = useState('pomodoro') // 'pomodoro' | 'custom'
@@ -104,11 +143,34 @@ const FocusQuest = ({ setIsQuestActive }) => {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
 
+    // Extension Listener
+    const handleExtensionMessage = (event) => {
+      if (event.source !== window) return
+      if (event.data.type === 'QUEST_VIOLATION_DETECTED' && event.data.source === 'FOCUS_QUEST_EXTENSION') {
+        console.log("Violation detected via extension:", event.data.url)
+        // Force penalty state instantly (bypass warning)
+        if (stateMachineRef.current && focusState !== FOCUS_STATES.BREAKING) {
+          stateMachineRef.current.forcePenalty()
+          handleWarningAlert(`⚠️ UNAUTHORIZED SECTOR: ${event.data.url}`)
+        }
+      }
+    }
+    window.addEventListener('message', handleExtensionMessage)
+
     return () => {
       unsubscribe()
       unsubscribeHPDrain()
       window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('message', handleExtensionMessage)
       stateMachineRef.current.reset()
+
+      // Stop Quest in Extension
+      window.postMessage({
+        type: 'STOP_QUEST',
+        source: 'FOCUS_QUEST_APP',
+        payload: { type: 'STOP_QUEST' }
+      }, '*')
+
       if (setIsQuestActive) setIsQuestActive(false) // Reset navbar on unmount
     }
   }, [setIsQuestActive])
@@ -147,6 +209,17 @@ const FocusQuest = ({ setIsQuestActive }) => {
     if (setIsQuestActive) setIsQuestActive(true)
 
     stateMachineRef.current.startFocus()
+
+    // Notify Extension
+    const allowedUrlsList = studyUrls.map(u => u.url)
+    window.postMessage({
+      type: 'START_QUEST',
+      source: 'FOCUS_QUEST_APP',
+      payload: {
+        type: 'START_QUEST',
+        allowedUrls: allowedUrlsList
+      }
+    }, '*')
 
     sessionRef.current = {
       startTime: Date.now(),
@@ -191,6 +264,13 @@ const FocusQuest = ({ setIsQuestActive }) => {
 
     if (setIsQuestActive) setIsQuestActive(false)
     reportSession('abandoned')
+
+    // Stop Extension Monitoring
+    window.postMessage({
+      type: 'STOP_QUEST',
+      source: 'FOCUS_QUEST_APP',
+      payload: { type: 'STOP_QUEST' }
+    }, '*')
 
     setTimeout(() => {
       navigate('/dashboard')
@@ -238,6 +318,9 @@ const FocusQuest = ({ setIsQuestActive }) => {
   }
 
   const handleQuestComplete = async () => {
+    if (isCompleting) return
+    setIsCompleting(true)
+
     const data = await recordAction('quest')
     const addedXP = data?.addedXP || 500
 
@@ -251,6 +334,14 @@ const FocusQuest = ({ setIsQuestActive }) => {
 
     if (setIsQuestActive) setIsQuestActive(false) // Release lockdown
     reportSession('completed')
+
+    // Stop Extension Monitoring
+    window.postMessage({
+      type: 'STOP_QUEST',
+      source: 'FOCUS_QUEST_APP',
+      payload: { type: 'STOP_QUEST' }
+    }, '*')
+
     setTimeout(() => {
       navigate('/dashboard')
     }, 3000)
@@ -340,9 +431,10 @@ const FocusQuest = ({ setIsQuestActive }) => {
     setTasks(updatedTasks)
 
     const allCompleted = updatedTasks.every(t => t.completed)
-    if (allCompleted && updatedTasks.length > 0 && setIsQuestActive) {
+    if (allCompleted && updatedTasks.length > 0) {
+      console.log("All tasks completed! Triggering Quest Success...")
       setTimeout(() => {
-        handleQuestComplete(xp)
+        handleQuestComplete()
       }, 1000)
     }
   }
@@ -568,6 +660,14 @@ const FocusQuest = ({ setIsQuestActive }) => {
             >
               Start Quest (Lockdown Mode)
             </motion.button>
+
+            {!extensionConnected && (
+              <div className="text-center mt-2 p-2 bg-yellow-900/20 border border-yellow-700/50 rounded text-xs text-yellow-500">
+                <span>⚠️ Companion Extension not detected. External tabs won't be monitored. </span>
+                <br />
+                <span className="opacity-70">Install it to enable full lockdown protection.</span>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
@@ -610,8 +710,13 @@ const FocusQuest = ({ setIsQuestActive }) => {
           {/* State Card */}
           <div className="bg-obsidian/50 rounded-lg p-4 border border-neon-blue/50 shadow-neon">
             <div className="text-sm text-sky-300">System State</div>
-            <div className="text-lg font-bold capitalize text-neon-cyan drop-shadow-sm">
+            <div className="text-lg font-bold capitalize text-neon-cyan drop-shadow-sm flex items-center gap-2">
               {focusState}
+              {extensionConnected && (
+                <span className="text-[10px] bg-green-900 text-green-300 px-1 rounded border border-green-500 animate-pulse" title="Companion Extension Active">
+                  LINKED
+                </span>
+              )}
             </div>
           </div>
         </div>
