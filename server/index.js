@@ -1,6 +1,6 @@
 const express = require('express')
 const cors = require('cors')
-const mysql = require('mysql2/promise')
+const { Pool } = require('pg')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const cookieParser = require('cookie-parser')
@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit')
 require('dotenv').config()
 
 const app = express()
-const PORT = process.env.PORT || 5001;  
+const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this'
 
 // Middleware
@@ -50,21 +50,18 @@ const authenticateToken = (req, res, next) => {
 
 
 // Database Connection
-const pool = mysql.createPool({
+const pool = new Pool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  port: process.env.DB_PORT || 5432,
 })
 
-pool.getConnection()
-  .then(connection => {
-    console.log('✅ Connected to MySQL database')
-    connection.release()
+pool.connect()
+  .then(client => {
+    console.log('✅ Connected to PostgreSQL database')
+    client.release()
   })
   .catch(err => {
     console.error('❌ Database connection error:', err.message)
@@ -76,8 +73,8 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body
 
-    const [existingUsers] = await pool.execute(
-      'SELECT * FROM users WHERE email = ?',
+    const { rows: existingUsers } = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
       [email]
     )
 
@@ -89,13 +86,13 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt)
     const userId = Date.now().toString()
 
-    await pool.execute(
-      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',
+    await pool.query(
+      'INSERT INTO users (id, name, email, password_hash) VALUES ($1, $2, $3, $4)',
       [userId, name, email, passwordHash]
     )
 
-    await pool.execute(
-      'INSERT INTO user_stats (user_id) VALUES (?)',
+    await pool.query(
+      'INSERT INTO user_stats (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
       [userId]
     )
 
@@ -121,7 +118,7 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body
-    const [users] = await pool.execute('SELECT * FROM users WHERE email = ?', [email])
+    const { rows: users } = await pool.query('SELECT * FROM users WHERE email = $1', [email])
 
     if (users.length === 0) return res.status(400).json({ error: 'Invalid email or password' })
 
@@ -167,20 +164,20 @@ app.get('/api/users/:userId/stats', authenticateToken, async (req, res) => {
 
   try {
     const { userId } = req.params
-    const [rows] = await pool.execute('SELECT * FROM user_stats WHERE user_id = ?', [userId])
+    const { rows } = await pool.query('SELECT * FROM user_stats WHERE user_id = $1', [userId])
 
     let stats = rows.length > 0 ? rows[0] : null
     if (!stats) {
-      await pool.execute('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId])
+      await pool.query('INSERT INTO user_stats (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId])
       stats = { total_xp: 0, level: 1, quests_completed: 0 }
     }
 
-    const [historyRows] = await pool.execute(
-      `SELECT DATE(end_time) as date, COUNT(*) as total_sessions,
+    const { rows: historyRows } = await pool.query(
+      `SELECT end_time::date as date, COUNT(*) as total_sessions,
          COUNT(CASE WHEN status = 'abandoned' THEN 1 END) as failed_sessions,
-         AVG(CASE WHEN total_cycles > 0 THEN (completed_cycles / total_cycles) * 100 ELSE 0 END) as focus_score 
-       FROM sessions WHERE user_id = ? AND status IN ('completed', 'abandoned')
-       GROUP BY DATE(end_time) ORDER BY date DESC LIMIT 30`,
+         AVG(CASE WHEN total_cycles > 0 THEN (completed_cycles::float / total_cycles) * 100 ELSE 0 END) as focus_score 
+       FROM sessions WHERE user_id = $1 AND status IN ('completed', 'abandoned')
+       GROUP BY end_time::date ORDER BY date DESC LIMIT 30`,
       [userId]
     )
 
@@ -219,11 +216,11 @@ app.post('/api/users/:userId/progress', authenticateToken, async (req, res) => {
     const XP_QUEST_BONUS = 500
 
     // 1. Fetch Current State (Atomic-like)
-    const [rows] = await pool.execute('SELECT * FROM user_stats WHERE user_id = ?', [userId])
+    const { rows } = await pool.query('SELECT * FROM user_stats WHERE user_id = $1', [userId])
     let stats = rows[0]
 
     if (!stats) {
-      await pool.execute('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId])
+      await pool.query('INSERT INTO user_stats (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId])
       stats = { total_xp: 0, level: 1, quests_completed: 0 }
     }
 
@@ -239,10 +236,10 @@ app.post('/api/users/:userId/progress', authenticateToken, async (req, res) => {
     const newQuestsCompleted = type === 'quest' ? (stats.quests_completed || 0) + 1 : (stats.quests_completed || 0)
 
     // 3. Update DB
-    await pool.execute(
+    await pool.query(
       `UPDATE user_stats 
-       SET total_xp = ?, level = ?, quests_completed = ?
-       WHERE user_id = ?`,
+       SET total_xp = $1, level = $2, quests_completed = $3
+       WHERE user_id = $4`,
       [newXP, newLevel, newQuestsCompleted, userId]
     )
 
@@ -295,11 +292,11 @@ app.post('/api/users/:userId/character', authenticateToken, async (req, res) => 
     const { userId } = req.params
     const {
       gender, skinTone, hairLength, hairColor, hasBeard, armorType,
-      hasGlasses, glassesColor, hasShoes, shoesColor, auraColor, auraIntensity
+      hasGlasses, glasses_color, hasShoes, shoes_color, auraColor, auraIntensity
     } = req.body
 
     // --- 1. Fetch User Level for Verification ---
-    const [statsRows] = await pool.execute('SELECT level FROM user_stats WHERE user_id = ?', [userId])
+    const { rows: statsRows } = await pool.query('SELECT level FROM user_stats WHERE user_id = $1', [userId])
     const userLevel = statsRows.length > 0 ? statsRows[0].level : 1
 
     // --- 2. Validation & Sanitization ---
@@ -339,30 +336,30 @@ app.post('/api/users/:userId/character', authenticateToken, async (req, res) => 
     // --- 3. Save Validated Config ---
 
     // Ensure stats exist
-    await pool.execute('INSERT IGNORE INTO user_stats (user_id) VALUES (?)', [userId])
+    await pool.query('INSERT INTO user_stats (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING', [userId])
 
-    await pool.execute(
+    await pool.query(
       `INSERT INTO character_configs (
         user_id, gender, skin_tone, hair_length, hair_color, has_beard,
         armor_type, has_glasses, glasses_color, has_shoes, shoes_color,
         aura_color, aura_intensity
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        gender = VALUES(gender), skin_tone = VALUES(skin_tone), hair_length = VALUES(hair_length),
-        hair_color = VALUES(hair_color), has_beard = VALUES(has_beard), armor_type = VALUES(armor_type),
-        has_glasses = VALUES(has_glasses), glasses_color = VALUES(glasses_color), has_shoes = VALUES(has_shoes),
-        shoes_color = VALUES(shoes_color), aura_color = VALUES(aura_color), aura_intensity = VALUES(aura_intensity)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ON CONFLICT (user_id) DO UPDATE SET
+        gender = EXCLUDED.gender, skin_tone = EXCLUDED.skin_tone, hair_length = EXCLUDED.hair_length,
+        hair_color = EXCLUDED.hair_color, has_beard = EXCLUDED.has_beard, armor_type = EXCLUDED.armor_type,
+        has_glasses = EXCLUDED.has_glasses, glasses_color = EXCLUDED.glasses_color, has_shoes = EXCLUDED.has_shoes,
+        shoes_color = EXCLUDED.shoes_color, aura_color = EXCLUDED.aura_color, aura_intensity = EXCLUDED.aura_intensity`,
       [
         userId,
         gender || 'masculine',
         skinTone || '#F3C4A0',
         hairLength || 'normal',
         hairColor || '#2D1B18',
-        hasBeard ? 1 : 0,
+        hasBeard ? true : false,
         armorType || 'basic',
-        hasGlasses ? 1 : 0,
+        hasGlasses ? true : false,
         glassesColor || '#000000',
-        hasShoes ? 1 : 0,
+        hasShoes ? true : false,
         shoesColor || '#4B5563',
         auraColor || '#0ea5e9',
         auraIntensity || 0.5
@@ -381,7 +378,7 @@ app.get('/api/users/:userId/character', authenticateToken, async (req, res) => {
 
   try {
     const { userId } = req.params
-    const [rows] = await pool.execute('SELECT * FROM character_configs WHERE user_id = ?', [userId])
+    const { rows } = await pool.query('SELECT * FROM character_configs WHERE user_id = $1', [userId])
 
     if (rows.length === 0) {
       return res.json({
@@ -419,13 +416,14 @@ app.post('/api/sessions', authenticateToken, async (req, res) => {
 
   try {
     const { userId, totalHours, totalCycles, completedCycles, totalXpEarned, status } = req.body
-    await pool.execute(
+    await pool.query(
       `INSERT INTO sessions (user_id, total_hours, total_cycles, completed_cycles, total_xp_earned, status, end_time)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
       [userId, totalHours, totalCycles, completedCycles, totalXpEarned, status]
     )
     res.json({ success: true })
   } catch (error) {
+    console.error('Session report error:', error)
     res.status(500).json({ error: 'Failed' })
   }
 })

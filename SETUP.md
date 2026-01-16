@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Node.js (v16 or higher)
-- MySQL (v8.0 or higher)
+- PostgreSQL (v14 or higher)
 - npm or yarn
 
 ## Installation Steps
@@ -14,21 +14,19 @@
 npm install
 ```
 
-### 2. Database Setup
-
-Create the MySQL database and tables:
+Create the PostgreSQL database and tables:
 
 ```bash
-mysql -u root -p < server/database.sql
+psql -U postgres -f server/database.sql
 ```
 
-**Alternative (if `mysql` is not in PATH):**
+**Alternative (if `psql` is not in PATH):**
 ```bash
 node scripts/setup_db.js
 ```
 
 Or manually:
-1. Open MySQL command line or MySQL Workbench
+1. Open pgAdmin or psql terminal
 2. Run the SQL file: `server/database.sql`
 3. Verify the database `focus_quest` was created
 
@@ -40,14 +38,15 @@ Create a `.env` file in the root directory:
 cp env.example .env
 ```
 
-Edit `.env` with your MySQL credentials:
+Edit `.env` with your PostgreSQL credentials:
 
 ```
 DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=your_mysql_password
+DB_USER=postgres
+DB_PASSWORD=your_postgres_password
 DB_NAME=focus_quest
-PORT=5000
+DB_PORT=5432
+PORT=5001
 NODE_ENV=development
 ```
 
@@ -59,11 +58,11 @@ npm run dev
 ```
 Frontend will run on http://localhost:3000
 
-**Terminal 2 - Backend (Express + MySQL):**
+**Terminal 2 - Backend (Express + PostgreSQL):**
 ```bash
 npm run server
 ```
-Backend will run on http://localhost:5000
+Backend will run on http://localhost:5001
 
 ### 5. Access the Application
 
@@ -102,7 +101,7 @@ http://localhost:3000
 ## Troubleshooting
 
 ### Database Connection Issues
-- Verify MySQL is running
+- Verify PostgreSQL is running
 - Check `.env` credentials
 - Ensure database `focus_quest` exists
 - Run `server/database.sql` again if needed

@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+import pkg from 'pg';
+const { Client } = pkg;
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
@@ -10,21 +11,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function migrateDatabase() {
-    const connection = await mysql.createConnection({
+    const client = new Client({
         host: process.env.DB_HOST || 'localhost',
-        user: process.env.DB_USER || 'root',
+        user: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME || 'focus_quest',
-        multipleStatements: true
+        port: process.env.DB_PORT || 5432
     });
 
     try {
-        console.log('Connected to MySQL.');
+        await client.connect();
+        console.log('Connected to PostgreSQL.');
 
         // 1. Drop old tables
         console.log('Dropping deprecated tables...');
-        await connection.query('DROP TABLE IF EXISTS health_history');
-        await connection.query('DROP TABLE IF EXISTS character_configs');
+        await client.query('DROP TABLE IF EXISTS health_history CASCADE');
+        await client.query('DROP TABLE IF EXISTS character_configs CASCADE');
         // We drop character_configs to recreate it with the new schema (Cols instead of JSON)
         // Note: This results in data loss for configs, which is acceptable for this prototype phase.
 
@@ -34,14 +36,14 @@ async function migrateDatabase() {
 
         // 3. Re-run setup to create tables
         console.log('Applying new schema...');
-        await connection.query(sql);
+        await client.query(sql);
 
         console.log('Database migration complete.');
     } catch (error) {
         console.error('Database migration failed:', error);
         process.exit(1);
     } finally {
-        await connection.end();
+        await client.end();
     }
 }
 
