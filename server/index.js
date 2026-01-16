@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit')
 require('dotenv').config()
 
 const app = express()
-const PORT = 5001
+const PORT = process.env.PORT || 5001;  
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this'
 
 // Middleware
@@ -51,10 +51,11 @@ const authenticateToken = (req, res, next) => {
 
 // Database Connection
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'focus_quest',
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
