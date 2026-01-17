@@ -8,6 +8,7 @@ import StudyModal from '../components/StudyModal'
 import { FocusStateMachine, FOCUS_STATES } from '../utils/focusStateMachine'
 import { calculatePomodoroXP, XP_BONUS_QUEST_COMPLETION } from '../utils/xpCalculator'
 import { saveToStorage, getFromStorage, STORAGE_KEYS } from '../utils/storage'
+import API_BASE_URL from '../api'
 
 const FocusQuest = ({ setIsQuestActive }) => {
   const navigate = useNavigate()
@@ -86,7 +87,7 @@ const FocusQuest = ({ setIsQuestActive }) => {
     // Fetch fresh stats from API to ensure reliability
     const user = getFromStorage(STORAGE_KEYS.USER)
     if (user?.id) {
-      fetch(`/api/users/${user.id}/stats`, { credentials: 'include' })
+      fetch(`${API_BASE_URL}/api/users/${user.id}/stats`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
           if (data.totalXP !== undefined) {
@@ -245,7 +246,7 @@ const FocusQuest = ({ setIsQuestActive }) => {
         status: status
       }
 
-      await fetch('/api/sessions', {
+      await fetch(`${API_BASE_URL}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sessionData),
@@ -289,7 +290,7 @@ const FocusQuest = ({ setIsQuestActive }) => {
     if (!user?.id) return null
 
     try {
-      const response = await fetch(`/api/users/${user.id}/progress`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/progress`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type }), // 'cycle' or 'quest'

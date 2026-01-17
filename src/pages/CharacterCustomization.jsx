@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import CustomizableCharacter from '../components/CustomizableCharacter'
 import { saveToStorage, getFromStorage, STORAGE_KEYS } from '../utils/storage'
 import { calculateLevel } from '../utils/xpCalculator'
+import API_BASE_URL from '../api'
 
 const CharacterCustomization = () => {
   const navigate = useNavigate()
@@ -29,7 +30,7 @@ const CharacterCustomization = () => {
       if (!user?.id) return
 
       try {
-        const response = await fetch(`/api/users/${user.id}/stats`, { credentials: 'include' })
+        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/stats`, { credentials: 'include' })
         const data = await response.json()
 
         if (data.totalXP !== undefined) {
@@ -61,7 +62,7 @@ const CharacterCustomization = () => {
       if (!user?.id) return
 
       try {
-        const response = await fetch(`/api/users/${user.id}/character`, { credentials: 'include' })
+        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/character`, { credentials: 'include' })
         const data = await response.json()
         if (data && !data.error) {
           console.log("Server config check:", data)
@@ -97,7 +98,7 @@ const CharacterCustomization = () => {
 
     try {
       console.log("Saving character for user:", user.id)
-      const response = await fetch(`/api/users/${user.id}/character`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/character`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),

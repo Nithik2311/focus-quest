@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { calculateLevel, getLevelProgress, getXPForNextLevel } from '../utils/xpCalculator'
 import { getFromStorage, STORAGE_KEYS } from '../utils/storage'
+import API_BASE_URL from '../api'
 
 const Dashboard = () => {
   const navigate = useNavigate()
@@ -21,7 +22,7 @@ const Dashboard = () => {
 
       try {
         console.log("Fetching stats for user:", user.id)
-        const response = await fetch(`/api/users/${user.id}/stats`, {
+        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/stats`, {
           credentials: 'include'
         })
 

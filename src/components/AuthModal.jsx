@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { sanitizeName, sanitizeText, validateEmail } from '../utils/security'
 import { saveToStorage, STORAGE_KEYS } from '../utils/storage'
+import API_BASE_URL from '../api'
 
 const AuthModal = ({ isOpen, onClose, onSuccess }) => {
   const [isLogin, setIsLogin] = useState(false)
@@ -42,7 +43,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
     }
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register'
+      const endpoint = isLogin ? `${API_BASE_URL}/api/auth/login` : `${API_BASE_URL}/api/auth/register`
       const payload = isLogin
         ? { email: sanitizedEmail, password: formData.password }
         : { name: sanitizedName, email: sanitizedEmail, password: formData.password }
