@@ -131,6 +131,4 @@ The Focus Loop uses a state machine with these states:
 - Perfect session bonus: 50 XP
 - Level formula: `floor(sqrt(XP / 100)) + 1`
 
-## License
 
-MIT
