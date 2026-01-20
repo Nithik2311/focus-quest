@@ -9,6 +9,11 @@ const initState = async () => {
     allowedUrls = data.allowedUrls || [];
     focusAppTabId = data.focusAppTabId || null;
     console.log("[Focus Extension] State Restored:", { questActive, allowedUrls, focusAppTabId });
+
+    // Re-enable bypass if quest was active before reload
+    if (questActive) {
+        enableIframeBypass();
+    }
 };
 initState();
 
@@ -25,12 +30,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return url.toLowerCase();
             }
         });
-        
+
         focusAppTabId = sender.tab.id;
-        
+
         // Persist state
         chrome.storage.local.set({ questActive, allowedUrls, focusAppTabId });
-        
+
         console.log('[Focus Extension] Quest Started. Monitoring...', allowedUrls);
         enableIframeBypass();
         sendResponse({ success: true });
@@ -38,10 +43,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         questActive = false;
         allowedUrls = [];
         focusAppTabId = null;
-        
+
         // Clear state
         chrome.storage.local.set({ questActive, allowedUrls, focusAppTabId });
-        
+
         console.log('[Focus Extension] Quest Stopped.');
         disableIframeBypass();
         sendResponse({ success: true });
@@ -117,6 +122,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 // --- IFRAME BYPASS LOGIC ---
 
 const enableIframeBypass = () => {
+    if (!chrome.declarativeNetRequest) {
+        console.error("[Focus Extension] Critical Error: declarativeNetRequest API is not available. Please ensure the extension is reloaded and permissions are accepted.");
+        return;
+    }
+    
     const rules = [
         {
             id: 1,
@@ -124,8 +134,12 @@ const enableIframeBypass = () => {
             action: {
                 type: 'modifyHeaders',
                 responseHeaders: [
+                    { header: 'X-Frame-Options', operation: 'remove' },
                     { header: 'x-frame-options', operation: 'remove' },
-                    { header: 'content-security-policy', operation: 'remove' }
+                    { header: 'Frame-Options', operation: 'remove' },
+                    { header: 'Content-Security-Policy', operation: 'remove' },
+                    { header: 'content-security-policy', operation: 'remove' },
+                    { header: 'X-Content-Security-Policy', operation: 'remove' }
                 ]
             },
             condition: {
@@ -134,16 +148,26 @@ const enableIframeBypass = () => {
         }
     ];
 
-    chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: [1],
-        addRules: rules
-    });
-    console.log("Iframe Bypass Enabled");
+    try {
+        chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: [1],
+            addRules: rules
+        });
+        console.log("Iframe Bypass Enabled");
+    } catch (err) {
+        console.error("Failed to update dynamic rules:", err);
+    }
 };
 
 const disableIframeBypass = () => {
-    chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: [1]
-    });
-    console.log("Iframe Bypass Disabled");
+    if (!chrome.declarativeNetRequest) return;
+    
+    try {
+        chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: [1]
+        });
+        console.log("Iframe Bypass Disabled");
+    } catch (err) {
+        console.error("Failed to disable dynamic rules:", err);
+    }
 };

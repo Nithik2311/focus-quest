@@ -83,7 +83,6 @@ const StudyModal = ({ url, onClose, onOpenExternal }) => {
                         onLoad={() => setLoading(false)}
                         title="Study Resource"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation"
                     />
 
                 </div>

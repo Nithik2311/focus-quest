@@ -59,3 +59,4 @@ window.addEventListener('message', (event) => {
         notifyApp();
     }
 });
+console.log("Focus Quest extension active");
