@@ -15,13 +15,31 @@ const JWT_SECRET = process.env.JWT_SECRET
 // MIDDLEWARE
 // ======================
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://focus-quest.vercel.app',
+  'https://focus-quest-a699no2vs-nithik-s-projects.vercel.app'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://focus-quest.vercel.app'
-  ],
-  credentials: true
-}))
+  origin: function (origin, callback) {
+    if (!origin || 
+        allowedOrigins.includes(origin) || 
+        origin.endsWith('.vercel.app') || 
+        origin.startsWith('chrome-extension://')) {
+      callback(null, true);
+    } else {
+      console.log('CORS Blocked for origin:', origin);
+      callback(null, false); // Return false instead of error to see if it helps
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
 
 app.use(express.json())
 app.use(cookieParser())
@@ -117,8 +135,8 @@ app.post('/api/auth/register', async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true,
+      sameSite: 'none',
       maxAge: 86400000
     })
 
@@ -150,8 +168,8 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true,
+      sameSite: 'none',
       maxAge: 86400000
     })
 
