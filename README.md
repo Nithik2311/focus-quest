@@ -2,8 +2,7 @@
 
 A secure, gamified Pomodoro-based learning application built with React, Tailwind CSS, Framer Motion, and MySQL.
 
-## Requirements
-## Chrome Extension Setup
+## Requirements:Chrome Extension Setup
 
 The **Focus Quest Companion** extension is required for tab monitoring and distraction detection.
 
