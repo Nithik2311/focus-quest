@@ -2,6 +2,21 @@
 
 A secure, gamified Pomodoro-based learning application built with React, Tailwind CSS, Framer Motion, and MySQL.
 
+## Requirements
+## Chrome Extension Setup
+
+The **Focus Quest Companion** extension is required for tab monitoring and distraction detection.
+
+### Installation Steps:
+
+1. Open Google Chrome and navigate to: `chrome://extensions/`
+2. Enable **"Developer mode"** using the toggle switch in the top-right corner.
+3. Click the **"Load unpacked"** button that appears in the top-left.
+4. Navigate to your project folder and select the `chrome-extension` directory.
+5. Click **Select Folder**. "Focus Quest Companion" should now be active.
+
+*Note: Ensure the extension is enabled whenever you are using the Focus Quest app.*
+
 ## Features
 
 ### Phase 1: Interactive Landing Page
@@ -74,21 +89,6 @@ npm run dev
 ```bash
 npm run server
 ```
-
-
-## Chrome Extension Setup
-
-The **Focus Quest Companion** extension is required for tab monitoring and distraction detection.
-
-### Installation Steps:
-
-1. Open Google Chrome and navigate to: `chrome://extensions/`
-2. Enable **"Developer mode"** using the toggle switch in the top-right corner.
-3. Click the **"Load unpacked"** button that appears in the top-left.
-4. Navigate to your project folder and select the `chrome-extension` directory.
-5. Click **Select Folder**. "Focus Quest Companion" should now be active.
-
-*Note: Ensure the extension is enabled whenever you are using the Focus Quest app.*
 
 ## Project Structure
 
