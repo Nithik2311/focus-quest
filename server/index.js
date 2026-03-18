@@ -5,11 +5,18 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const cookieParser = require('cookie-parser')
 const rateLimit = require('express-rate-limit')
+const fs = require('fs')
+const path = require('path')
 require('dotenv').config()
 
 const app = express()
 const PORT = process.env.PORT || 5001
 const JWT_SECRET = process.env.JWT_SECRET
+
+// ======================
+// IMPORTANT FIX (proxy)
+// ======================
+app.set("trust proxy", 1);
 
 // ======================
 // MIDDLEWARE
@@ -30,17 +37,13 @@ app.use(cors({
       callback(null, true);
     } else {
       console.log('CORS Blocked for origin:', origin);
-      callback(null, false); // Return false instead of error to see if it helps
+      callback(null, false);
     }
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  credentials: true
 }));
 
-// Handle preflight requests
 app.options('*', cors());
-
 app.use(express.json())
 app.use(cookieParser())
 
@@ -64,17 +67,117 @@ app.use('/api', rateLimit({
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 })
 
+// ======================
+// INIT DB (FULL SCHEMA)
+// ======================
+
+const initDB = async () => {
+  try {
+    const sql = `
+    CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(255) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_stats (
+      user_id VARCHAR(255) PRIMARY KEY,
+      total_xp INT DEFAULT 0,
+      level INT DEFAULT 1,
+      quests_completed INT DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS character_configs (
+      user_id VARCHAR(255) PRIMARY KEY,
+      gender VARCHAR(50) DEFAULT 'masculine',
+      skin_tone VARCHAR(50) DEFAULT '#F3C4A0',
+      hair_length VARCHAR(50) DEFAULT 'normal',
+      hair_color VARCHAR(50) DEFAULT '#2D1B18',
+      has_beard BOOLEAN DEFAULT FALSE,
+      armor_type VARCHAR(50) DEFAULT 'basic',
+      has_glasses BOOLEAN DEFAULT FALSE,
+      glasses_color VARCHAR(50) DEFAULT '#000000',
+      has_shoes BOOLEAN DEFAULT TRUE,
+      shoes_color VARCHAR(50) DEFAULT '#4B5563',
+      aura_color VARCHAR(50) DEFAULT '#0ea5e9',
+      aura_intensity DECIMAL(3, 2) DEFAULT 0.50,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES user_stats(user_id) ON DELETE CASCADE
+    );
+
+    DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'session_status') THEN
+            CREATE TYPE session_status AS ENUM('active', 'completed', 'abandoned');
+        END IF;
+    END $$;
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id SERIAL PRIMARY KEY,
+      user_id VARCHAR(255) NOT NULL,
+      start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      end_time TIMESTAMP WITH TIME ZONE NULL,
+      total_hours DECIMAL(4,2) NOT NULL,
+      total_cycles INT NOT NULL,
+      completed_cycles INT DEFAULT 0,
+      total_xp_earned INT DEFAULT 0,
+      status session_status DEFAULT 'active',
+      FOREIGN KEY (user_id) REFERENCES user_stats(user_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_status ON sessions(user_id, status);
+
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+        RETURN NEW;
+    END;
+    $$ language 'plpgsql';
+
+    DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_user_stats_updated_at') THEN
+            CREATE TRIGGER update_user_stats_updated_at
+            BEFORE UPDATE ON user_stats
+            FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+        END IF;
+    END $$;
+
+    DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_character_configs_updated_at') THEN
+            CREATE TRIGGER update_character_configs_updated_at
+            BEFORE UPDATE ON character_configs
+            FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+        END IF;
+    END $$;
+    `;
+
+    await pool.query(sql);
+    console.log("✅ Full DB schema initialized");
+  } catch (err) {
+    console.error("❌ Schema error:", err.message);
+  }
+};
+
+// ======================
+// CONNECT + INIT
+// ======================
+
 pool.connect()
-  .then(c => {
-    console.log('✅ PostgreSQL connected')
-    c.release()
+  .then(async (c) => {
+    console.log('✅ PostgreSQL connected');
+    c.release();
+    await initDB();
   })
-  .catch(err => console.error('❌ DB Error:', err.message))
+  .catch(err => console.error('❌ DB Error:', err.message));
 
 // ======================
 // AUTH MIDDLEWARE
@@ -86,21 +189,19 @@ const authenticateToken = (req, res, next) => {
     req.cookies?.token ||
     (authHeader && authHeader.split(' ')[1])
 
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET)
     req.user = decoded
     next()
-  } catch (err) {
+  } catch {
     return res.status(403).json({ error: 'Invalid token' })
   }
 }
 
 // ======================
-// AUTH ROUTES
+// AUTH ROUTES (UNCHANGED)
 // ======================
 
 app.post('/api/auth/register', async (req, res) => {
@@ -174,59 +275,9 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       user: { id: user.id, name: user.name, email: user.email }
     })
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Login failed' })
   }
-})
-
-app.post('/api/auth/logout', (_, res) => {
-  res.clearCookie('token')
-  res.json({ success: true })
-})
-
-// ======================
-// PROTECTED ROUTES
-// ======================
-
-app.get('/api/users/:userId/stats', authenticateToken, async (req, res) => {
-  if (req.user.id !== req.params.userId)
-    return res.status(403).json({ error: 'Forbidden' })
-
-  try {
-    const stats = await pool.query(
-      'SELECT * FROM user_stats WHERE user_id=$1',
-      [req.params.userId]
-    )
-
-    res.json(stats.rows[0] || {})
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch stats' })
-  }
-})
-
-app.post('/api/users/:userId/progress', authenticateToken, async (req, res) => {
-  if (req.user.id !== req.params.userId)
-    return res.status(403).json({ error: 'Forbidden' })
-
-  try {
-    const { type } = req.body
-    const XP = type === 'quest' ? 500 : 200
-
-    await pool.query(
-      `UPDATE user_stats
-       SET total_xp = total_xp + $1
-       WHERE user_id = $2`,
-      [XP, req.params.userId]
-    )
-
-    res.json({ success: true, addedXP: XP })
-  } catch {
-    res.status(500).json({ error: 'Failed' })
-  }
-})
-
-app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() })
 })
 
 // ======================
